@@ -1,54 +1,69 @@
-from services import vk, extract_mention, add_ban, remove_ban
+from services import add_ban, remove_ban
 
-keys = ["бан", "ban", "разбан", "unban"]
+keys = ["бан", "разбан"]
+
+PERMISSIONS = {
+    "бан": "ban",
+    "разбан": "unban"
+    }
 
 
-def run(event, args):
-    peer_id = event.obj.message["peer_id"]
-    text = event.obj.message["text"].lower()
-
-    # Вычисляем chat_id для кика
-    chat_id = peer_id - 2000000000 if peer_id > 2000000000 else None
-
-    # Поиск ID цели
-    target_id = extract_mention(args)
-    if not target_id and "reply_message" in event.obj.message:
-        target_id = event.obj.message["reply_message"]["from_id"]
-
-    if not target_id:
-        vk.messages.send(
-            peer_id=peer_id, message="Укажите пользователя (@user).", random_id=0
-        )
-        return
+async def run(message, args, bot):
+    chat_id = message.chat.id
+    text = message.text.lower()
 
     # --- ЛОГИКА РАЗБАНА ---
     if "разбан" in text or "unban" in text:
-        if remove_ban(peer_id, target_id):
-            vk.messages.send(
-                peer_id=peer_id,
-                message=f"✅ @id{target_id} удален из черного списка.",
-                random_id=0,
-            )
+        # Пытаемся найти ID
+        target_id = None
+        if message.reply_to_message:
+            target_id = message.reply_to_message.from_user.id
+        # Если передан аргумент (числовой ID)
+        elif args and args.isdigit():
+            target_id = int(args)
+
+        if target_id:
+            if remove_ban(chat_id, target_id):
+                # Также снимаем бан в самом телеграме
+                try:
+                    await bot.unban_chat_member(chat_id, target_id)
+                except:
+                    pass
+                await message.answer(
+                    f"✅ Пользователь {target_id} удален из базы банов."
+                )
+            else:
+                await message.answer(
+                    "Этого пользователя нет в локальном черном списке."
+                )
         else:
-            vk.messages.send(
-                peer_id=peer_id, message="Пользователя нет в бане.", random_id=0
+            await message.answer(
+                "Кого разбанить? Ответьте на сообщение или укажите ID."
             )
         return
 
     # --- ЛОГИКА БАНА ---
-    # 1. Заносим в базу
-    add_ban(peer_id, target_id)
+    target_id = None
+    target_name = "Пользователь"
 
-    # 2. Кикаем из беседы прямо сейчас
-    kick_status = "и исключен"
-    if chat_id:
-        try:
-            vk.messages.removeChatUser(chat_id=chat_id, user_id=target_id)
-        except:
-            kick_status = "но я не смог его кикнуть (нет прав?)"
+    if message.reply_to_message:
+        target_id = message.reply_to_message.from_user.id
+        target_name = message.reply_to_message.from_user.full_name
 
-    vk.messages.send(
-        peer_id=peer_id,
-        message=f"⛔ Пользователь @id{target_id} забанен {kick_status}.\nЕсли он вернется — я кикну его снова.",
-        random_id=0,
-    )
+    if not target_id:
+        await message.answer("⛔ Ответьте на сообщение пользователя для бана.")
+        return
+
+    # 1. Заносим в базу (чтобы авто-кикать при возвращении)
+    add_ban(chat_id, target_id)
+
+    # 2. Баним в Телеграме
+    try:
+        await bot.ban_chat_member(chat_id, target_id)
+        await message.answer(
+            f"⛔ {target_name} (ID: {target_id}) забанен и внесен в черный список."
+        )
+    except Exception as e:
+        await message.answer(
+            f"⚠️ В базу добавил, но кикнуть не смог (нет прав?).\nОшибка: {e}"
+        )

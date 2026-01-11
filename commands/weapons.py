@@ -1,101 +1,86 @@
 import json
-from services import (
-    vk,
-    upload,
-    search_weapon,
-    download_image,
-    extract_weapon_list,
-    create_keyboard,
-)
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from services import search_weapon, download_image, extract_weapon_list
 
 keys = ["ттх", "ттк", "о"]
 
+PERMISSIONS = {
+    "ттх": 'ttx', 
+    "ттк": 'ttk', 
+    "о": 'ttx_2'
+    }
 
-def run(event, args):
-    peer_id = event.obj.message["peer_id"]
-    cmd_text = event.obj.message["text"].lower()
+async def run(message, args, bot):
+    cmd_text = message.text.lower()
 
-    # Определяем режим
     mode = "weapons.php"
     if "ттк" in cmd_text:
         mode = "weapons_ttk.php"
 
     if not args:
-        vk.messages.send(
-            peer_id=peer_id, message="Укажите название оружия", random_id=0
+        await message.answer(
+            "Укажите название оружия. Пример: <code>ттх deagle</code>",
+            parse_mode="HTML",
         )
         return
 
-    process_weapon(peer_id, args, mode)
+    await process_weapon(message, args, mode, bot)
 
 
-def process_weapon(
-    peer_id, weapon_name, mode="weapons.php", event_id=None, user_id=None
-):
-    # Уведомление
-    if event_id:
-        vk.messages.sendMessageEventAnswer(
-            event_id=event_id,
-            user_id=user_id,
-            peer_id=peer_id,
-            event_data=json.dumps({"type": "show_snackbar", "text": "Генерирую..."}),
-        )
-    else:
-        if mode == "weapons.php":  # Для ТТК обычно только текст, для ТТХ фото
-            vk.messages.send(
-                peer_id=peer_id, message="Генерирую фоточку🥰", random_id=0
-            )
+async def process_weapon(message_or_callback, weapon_name, mode, bot):
+    # Определяем, откуда пришел вызов (сообщение или нажатие кнопки)
+    is_callback = hasattr(message_or_callback, "data")
+    message = message_or_callback.message if is_callback else message_or_callback
 
-    # Запрос
-    resp = search_weapon(weapon_name, mode)
+    # Показываем статус "печатает"
+    await bot.send_chat_action(chat_id=message.chat.id, action="typing")
 
-    # 1. Если картинка
+    resp = await search_weapon(weapon_name, mode)
+
+    # 1. Если API вернуло "1" — значит есть картинка
     if resp == "1":
-        img = download_image()
-        if img:
-            with open("temp.png", "wb") as f:
-                f.write(img)
-            photo = upload.photo_messages("temp.png")[0]
-            att = f"photo{photo['owner_id']}_{photo['id']}"
-            vk.messages.send(peer_id=peer_id, attachment=att, random_id=0)
+        img_data = await download_image()
+        if img_data:
+            photo = BufferedInputFile(img_data, filename="result.png")
+            # Если это callback, можно отправить новое фото, но проще удалить старое меню и прислать фото
+            if is_callback:
+                await message.delete()
+            await message.answer_photo(photo)
         else:
-            vk.messages.send(peer_id=peer_id, message="Ошибка фото", random_id=0)
+            await message.answer("Ошибка: Не удалось загрузить фото.")
 
-    # 2. Если список вариантов
+    # 2. Если "Нет результатов" — пробуем показать кнопки
     elif "Нет результатов" in resp:
         variants = extract_weapon_list(resp)
         if variants and mode == "weapons.php":
-            buttons = []
+            builder = InlineKeyboardBuilder()
+
+            # Добавляем кнопки (максимум 10)
             for w in variants[:10]:
-                buttons.append(
-                    [
-                        {
-                            "action": {
-                                "type": "callback",
-                                "label": w[:40],
-                                "payload": json.dumps(
-                                    {"type": "select_weapon", "weapon": w}
-                                ),
-                            }
-                        }
-                    ]
-                )
-            kb = create_keyboard(buttons)
-            vk.messages.send(peer_id=peer_id, message=resp, keyboard=kb, random_id=0)
+                # В callback_data передаем префикс "wp:" и имя оружия
+                # Осторожно с длиной callback_data (макс 64 байта)
+                short_name = w[:40]
+                builder.button(text=short_name, callback_data=f"wp:{short_name}")
+
+            builder.adjust(1)  # В один столбец
+
+            await message.answer(
+                f"{resp}\nВыберите вариант:", reply_markup=builder.as_markup()
+            )
         else:
-            vk.messages.send(peer_id=peer_id, message=resp, random_id=0)
+            await message.answer(resp)
 
-    # 3. Текст
+    # 3. Просто текст (обычно для ТТК)
     else:
-        vk.messages.send(peer_id=peer_id, message=resp, random_id=0)
+        await message.answer(resp)
 
 
-# Обработка кнопки
-def handle_callback(event):
-    weapon = event.object.payload.get("weapon")
-    process_weapon(
-        peer_id=event.object.peer_id,
-        weapon_name=weapon,
-        event_id=event.object.event_id,
-        user_id=event.object.user_id,
-    )
+# Обработчик кнопки (вызывается из main.py)
+async def handle_callback(callback, bot):
+    # callback.data выглядит как "wp:Ak-47"
+    weapon_name = callback.data.split(":", 1)[1]
+
+    await callback.answer("Генерирую...")
+    # Вызываем ту же функцию, но передаем callback
+    await process_weapon(callback, weapon_name, "weapons.php", bot)

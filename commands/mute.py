@@ -1,101 +1,82 @@
-# commands/mute.py
 import re
 import time
-from services import vk, extract_mention, add_mute, remove_mute
+from services import add_mute, remove_mute
 
 keys = ["мут", "mute", "размут", "unmute"]
 
+PERMISSIONS = {
+    "мут": 'mute_users',
+    "размут": 'mute_users'
+    }
 
 def parse_time(args):
     """Превращает '5м', '1ч' в секунды"""
     if not args:
-        return 30 * 24 * 60 * 60  # По умолчанию 30 дней
+        return 30 * 60  # По умолчанию 30 мин
 
-    # Ищем числа и буквы (например: 10м)
+    # Ищем число + букву
     match = re.search(r"(\d+)\s*(с|м|ч|д|s|m|h|d)?", args.lower())
     if not match:
-        return 30 * 24 * 60 * 60
+        return 30 * 60
 
     val = int(match.group(1))
     unit = match.group(2)
 
     if unit in ["с", "s"]:
         return val
-    if unit in ["м", "m"]:
+    if unit in ["м", "m", None]:
         return val * 60
     if unit in ["ч", "h"]:
         return val * 3600
     if unit in ["д", "d"]:
         return val * 86400
+    return val * 60
 
-    return val * 60  # Если не указано, считаем минуты
 
+async def run(message, args, bot):
+    chat_id = message.chat.id
+    text = message.text.lower()
 
-def run(event, args):
-    peer_id = event.obj.message["peer_id"]
-    text = event.obj.message["text"].lower()
-
-    # 1. Логика РАЗМУТА
+    # --- РАЗМУТ ---
     if "размут" in text or "unmute" in text:
-        if not args:
-            vk.messages.send(
-                peer_id=peer_id, message="Кого размутить? Укажи @ссылку", random_id=0
+        target_id = None
+        if message.reply_to_message:
+            target_id = message.reply_to_message.from_user.id
+
+        if target_id and remove_mute(chat_id, target_id):
+            await message.answer(
+                f"✅ {message.reply_to_message.from_user.full_name} снова может говорить."
             )
-            return
-
-        target_id = extract_mention(args)
-        if target_id:
-            if remove_mute(peer_id, target_id):
-                vk.messages.send(
-                    peer_id=peer_id,
-                    message=f"✅ @id{target_id} снова может говорить.",
-                    random_id=0,
-                )
-            else:
-                vk.messages.send(
-                    peer_id=peer_id,
-                    message="Этот пользователь не был в муте.",
-                    random_id=0,
-                )
+        else:
+            await message.answer(
+                "Пользователь не был в муте или вы не ответили на сообщение."
+            )
         return
 
-    # 2. Логика МУТА
-    if not args:
-        vk.messages.send(
-            peer_id=peer_id,
-            message="Укажи кого замутить. Пример: мут @user 1ч",
-            random_id=0,
+    # --- МУТ ---
+    if not message.reply_to_message:
+        await message.answer(
+            "🤫 Ответьте на сообщение, чтобы замутить. Пример: <code>мут 1ч</code>",
+            parse_mode="HTML",
         )
         return
 
-    target_id = extract_mention(args)
-    if not target_id:
-        vk.messages.send(
-            peer_id=peer_id, message="Не удалось найти пользователя.", random_id=0
-        )
-        return
+    target_id = message.reply_to_message.from_user.id
+    target_name = message.reply_to_message.from_user.full_name
 
-    # Вычисляем время (убираем меншн из аргументов, чтобы найти время)
-    # args сейчас выглядит как "[id1|Vasya] 10м"
-    clean_args = re.sub(r"\[.*?\]|@\w+", "", args).strip()
-    seconds = parse_time(clean_args)
+    # Парсим время из аргументов (args = текст после команды "мут")
+    seconds = parse_time(args)
 
-    # Добавляем в базу
-    add_mute(peer_id, target_id, seconds)
+    # Добавляем в базу (чтобы бот удалял сообщения)
+    add_mute(chat_id, target_id, seconds)
 
-    # Формируем красивый ответ
-    readable_time = ""
-    if seconds >= 86400:
-        readable_time = f"{round(seconds/86400, 1)} дн."
-    elif seconds >= 3600:
-        readable_time = f"{round(seconds/3600, 1)} ч."
+    # Форматируем вывод времени
+    readable = f"{seconds} сек."
+    if seconds >= 3600:
+        readable = f"{round(seconds/3600, 1)} ч."
     elif seconds >= 60:
-        readable_time = f"{round(seconds/60, 1)} мин."
-    else:
-        readable_time = f"{seconds} сек."
+        readable = f"{round(seconds/60, 1)} мин."
 
-    vk.messages.send(
-        peer_id=peer_id,
-        message=f"🤫 @id{target_id} получил мут на {readable_time}\nЕго сообщения будут удаляться.",
-        random_id=0,
+    await message.answer(
+        f"🤫 {target_name} получил мут на {readable}.\nЕго сообщения будут удаляться."
     )

@@ -1,50 +1,34 @@
 import json
-from services import vk, get_text, create_keyboard
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from services import get_text
 
 keys = ["карты"]
 
+PERMISSIONS = {
+    "карты": 'maps'
+    }
 
 def get_maps_keyboard():
-    return create_keyboard(
-        [
-            [
-                {
-                    "action": {
-                        "type": "callback",
-                        "label": "Обновить",
-                        "payload": json.dumps({"type": "refresh_maps"}),
-                    }
-                }
-            ]
-        ]
-    )
+    # Создаем кнопку с callback_data="refresh_maps"
+    button = InlineKeyboardButton(text="Обновить 🔄", callback_data="refresh_maps")
+    return InlineKeyboardMarkup(inline_keyboard=[[button]])
 
 
-def run(event, args):
-    peer_id = event.obj.message["peer_id"]
-    text = get_text("maps.php")
-    vk.messages.send(
-        peer_id=peer_id, message=text, keyboard=get_maps_keyboard(), random_id=0
-    )
+async def run(message, args, bot):
+    text = await get_text("maps.php")
+    await message.answer(text, reply_markup=get_maps_keyboard())
 
 
-# Функция для обработки кнопки (вызывается из main.py)
-def handle_callback(event):
-    text = get_text("maps.php")
+# Функция для обновления (вызывается из main.py при нажатии кнопки)
+async def handle_callback(callback, bot):
+    text = await get_text("maps.php")
 
-    vk.messages.sendMessageEventAnswer(
-        event_id=event.object.event_id,
-        user_id=event.object.user_id,
-        peer_id=event.object.peer_id,
-        event_data=json.dumps({"type": "show_snackbar", "text": "Обновлено ✅"}),
-    )
+    # Показываем уведомление "всплывашка"
+    await callback.answer("Обновлено ✅")
 
     try:
-        vk.messages.edit(
-            peer_id=event.object.peer_id,
-            conversation_message_id=event.object.conversation_message_id,
-            message=text,
-            keyboard=get_maps_keyboard(),
-        )
-    except:
+        # Редактируем сообщение
+        await callback.message.edit_text(text, reply_markup=get_maps_keyboard())
+    except Exception:
+        # Если текст не изменился, телеграм может выдать ошибку, игнорируем
         pass

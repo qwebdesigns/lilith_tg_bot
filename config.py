@@ -1,6 +1,15 @@
-TOKEN = "vk1.a.VLrEI6lTX_LedTNvShqMzP6ML2XEZkjAPRvlMiEZO682_dxeHCdq4Vrz9PeVypWdFW8-9hzH2OtLmhybkHURBTcPA7UfUHoG3yPPTITGzCwk2rxIBxYU_399Mn3b7GyvfXu20hcKuJkXMiIV1lrb_35E2ogh7izF33ClrxtWdnzl1jl6Ik4z-MjGMyoqnMIQDG6zOch7lTKgddSm95y3QQ"
-GROUP_ID = "233705351"
+# config.py
+
+# Токен от @BotFather
+BOT_TOKEN = "7646734737:AAG_oaz_nhLdFSPDn_1EwT-uOJBFqSRKw0U"
+
+# Базовый URL вашего API
 BASE_URL = "https://gammahub.tech/lilit_bot/"
 
-# Префиксы, на которые отзывается бот
-PREFIXES = ["л", "лилит", "лили", "котя", "зая", "лися", "залупа коня", "/"]
+# Префиксы команд (в Telegram часто используют слэш, но оставим текстовые для "человечности")
+PREFIXES = ["л", "лилит", "лили", "котя", "зая", "лися", "lilith", "lili", "kitty", "bunny", "foxy", "залупа коня" ]
+
+# Ваш Telegram ID (чтобы бот знал админа/владельца)
+ADMIN_ID = 1045815964  # Замените на свой цифровой ID
+
+CHAT_ID = -1001234567890

@@ -1,46 +1,37 @@
-from services import vk, extract_mention
+keys = ["кик","выгнать"]
 
-keys = ["кик", "kick", "выгнать"]
+PERMISSIONS = {
+    "кик": "kick",
+    'выгнать': 'kick_2'
+}
 
-
-def run(event, args):
-    peer_id = event.obj.message["peer_id"]
-
-    # Получаем ID беседы (chat_id = peer_id - 2000000000)
-    if peer_id < 2000000000:
-        vk.messages.send(
-            peer_id=peer_id, message="Команда работает только в беседах.", random_id=0
-        )
+async def run(message, args, bot):
+    # Проверка на личку
+    if message.chat.type == "private":
+        await message.answer("Эта команда работает только в группах.")
         return
 
-    chat_id = peer_id - 2000000000
+    # Ищем цель (лучше всего через Reply)
+    target_id = None
+    target_name = "Пользователь"
 
-    # Проверяем аргументы
-    target_id = extract_mention(args)
-
-    # Если аргумента нет, и это ответ на сообщение (reply)
-    if not target_id and "reply_message" in event.obj.message:
-        target_id = event.obj.message["reply_message"]["from_id"]
+    if message.reply_to_message:
+        target_id = message.reply_to_message.from_user.id
+        target_name = message.reply_to_message.from_user.full_name
 
     if not target_id:
-        vk.messages.send(
-            peer_id=peer_id,
-            message="Кого кикнуть? Укажи @user или ответь на сообщение.",
-            random_id=0,
+        await message.answer(
+            "⚠️ Ответьте на сообщение пользователя, которого нужно кикнуть."
         )
         return
 
-    # Пытаемся выгнать
     try:
-        vk.messages.removeChatUser(chat_id=chat_id, user_id=target_id)
-        vk.messages.send(
-            peer_id=peer_id,
-            message=f"👋 Пользователь @id{target_id} исключен.",
-            random_id=0,
-        )
+        # В Telegram кик = бан + разбан
+        await bot.ban_chat_member(message.chat.id, target_id)
+        await bot.unban_chat_member(message.chat.id, target_id)
+
+        await message.answer(f"👋 {target_name} был исключен.")
     except Exception as e:
-        vk.messages.send(
-            peer_id=peer_id,
-            message=f"Не удалось кикнуть (нет прав админа или это админ).\nОшибка: {e}",
-            random_id=0,
+        await message.answer(
+            f"❌ Не удалось кикнуть. Возможно, у бота нет прав админа.\nОшибка: {e}"
         )
