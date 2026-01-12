@@ -197,6 +197,12 @@ async def handle_callbacks(callback: CallbackQuery):
 
         await weapons.handle_callback(callback, bot)
 
+    # === ДОБАВИТЬ ВОТ ЭТО ===
+    elif data.startswith("mry:"):
+        from commands import marriages
+
+        await marriages.handle_callback(callback, bot)
+    # ========================
     # Не забываем отвечать на колбэк, чтобы убрались "часики"
     # (Функции выше сами отвечают, но если нет — safety net)
     try:
