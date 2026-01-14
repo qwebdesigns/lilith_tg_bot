@@ -82,7 +82,11 @@ async def handle_callbacks(callback: CallbackQuery):
         from commands import marriages
 
         await marriages.handle_callback(callback, bot)
+    # Розыгрыши
+    elif data.startswith("gw:"):
+        from commands import giveaway
 
+        await giveaway.handle_callback(callback, bot)
     try:
         await callback.answer()
     except:
