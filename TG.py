@@ -8,7 +8,8 @@ from aiogram.types import Message
 from aiogram.filters import CommandStart
 
 from config import BOT_TOKEN, PREFIXES
-from services import check_mute, check_is_banned, check_permissions
+from services import check_mute, check_is_banned, check_permissions, update_local_user
+from aiogram.types import ContentType  # Не забудьте добавить в импорты вверху!
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -94,13 +95,17 @@ async def handle_callbacks(callback: CallbackQuery):
 
 
 # --- ОБРАБОТЧИК ВХОДА НОВЫХ УЧАСТНИКОВ ---
-# --- ОБРАБОТЧИК ВХОДА НОВЫХ УЧАСТНИКОВ ---
 @dp.message(F.new_chat_members)
 async def on_user_join(message: Message):
-    for user in message.new_chat_members:
+    # ЛОГ: Видим ли мы вход?
+    print(f"DEBUG: Вход в чат! ({len(message.new_chat_members)} чел.)")
 
-        # 1. Сохраняем в локальную базу (для шпионов)
-        await update_local_user(user.id, user.username, user.full_name)
+    for user in message.new_chat_members:
+        # 1. Сохраняем в локальную базу (Обязательно проверьте импорт update_local_user!)
+        try:
+            await update_local_user(user.id, user.username, user.full_name)
+        except Exception as e:
+            print(f"❌ Ошибка сохранения юзера: {e}")
 
         # 2. Проверка бана
         if check_is_banned(message.chat.id, user.id):
@@ -111,15 +116,14 @@ async def on_user_join(message: Message):
                 )
                 await bot.unban_chat_member(message.chat.id, user.id)
             except Exception as e:
-                print(f"Не удалось кикнуть: {e}")
+                print(f"Ошибка кика: {e}")
             continue
 
         # 3. ПРИВЕТСТВИЕ
         if not user.is_bot:
-            # Ссылка на правила
             rules_link = "https://sites.google.com/view/surpassrules/главная-страница"
 
-            # Текст приветствия
+            # Текст (HTML разметка)
             welcome_text = (
                 f"🦅 <b>Welcome to SURPASS Clan, {user.mention_html()}!</b>\n\n"
                 f"Рады видеть тебя в наших рядах. Вся важная информация уже ждет тебя в 📌 <b>закрепе</b>, но вот краткий курс молодого бойца:\n\n"
@@ -133,22 +137,29 @@ async def on_user_join(message: Message):
                 f"✨ Душа клана и Маскот: @bemysur (Елена)\n"
                 f"😈 Заместитель: @slavyanskoeghetto (Крестик)\n\n"
                 f"📜 <b>Важно:</b>\n"
-                f"Обязательно ознакомься с <a href='{rules_link}'>Правилами клана</a>.!\n\n"
+                f"Обязательно ознакомься с <a href='{rules_link}'>Правилами клана</a>!\n\n"
                 f"🤖 <b>О себе:</b>\n"
                 f"Я — бот этого клана. Помогаю с инфой, статистикой и развлечениями.\n"
-                f"👉Уточнить мои возможности, можно у ребят в чате.\n\n"
+                f"👉 Уточнить мои возможности можно у ребят в чате.\n\n"
                 f"<i>Удачи в боях и добро пожаловать в семью!</i>"
             )
 
-            # Отправляем (disable_web_page_preview=True чтобы не грузилась картинка сайта правил и не засоряла чат)
+            print(f"DEBUG: Отправляю приветствие для {user.full_name}")
+
             try:
+                # Пробуем ответить на сообщение о входе
                 await message.reply(
                     welcome_text, parse_mode="HTML", disable_web_page_preview=True
                 )
-            except:
-                await message.answer(
-                    welcome_text, parse_mode="HTML", disable_web_page_preview=True
-                )
+            except Exception as e:
+                print(f"❌ Не удалось ответить реплаем: {e}")
+                # Если не вышло (например, сообщение о входе удалено), пишем просто в чат
+                try:
+                    await message.answer(
+                        welcome_text, parse_mode="HTML", disable_web_page_preview=True
+                    )
+                except Exception as e2:
+                    print(f"❌ КРИТИЧЕСКАЯ ОШИБКА ОТПРАВКИ: {e2}")
 
 
 # --- ГЛАВНЫЙ ОБРАБОТЧИК СООБЩЕНИЙ ---
@@ -161,13 +172,51 @@ async def handle_message(message: Message):
     user_id = message.from_user.id
     text = message.text.strip()
 
-    # 1. ПРОВЕРКА НА МУТ
-    if check_mute(chat_id, user_id):
-        try:
-            await message.delete()
-        except:
-            pass
-        return
+    mute_type = check_mute(chat_id, user_id)
+
+    if mute_type:
+        should_delete = False
+        msg_type = message.content_type  # photo, video, text, sticker...
+
+        # Логика проверки типов
+        if mute_type == "all":
+            should_delete = True
+
+        elif mute_type == "media":
+            # Медиа мут: фото, видео, кружочки, гифки, стикеры, документы, аудио
+            if msg_type in [
+                ContentType.PHOTO,
+                ContentType.VIDEO,
+                ContentType.VIDEO_NOTE,
+                ContentType.ANIMATION,
+                ContentType.STICKER,
+                ContentType.AUDIO,
+                ContentType.VOICE,
+                ContentType.DOCUMENT,
+            ]:
+                should_delete = True
+
+        elif mute_type == "photo" and msg_type == ContentType.PHOTO:
+            should_delete = True
+
+        elif mute_type == "video" and msg_type in [
+            ContentType.VIDEO,
+            ContentType.VIDEO_NOTE,
+        ]:
+            should_delete = True
+
+        elif mute_type == "animation" and msg_type == ContentType.ANIMATION:
+            should_delete = True
+
+        elif mute_type == "sticker" and msg_type == ContentType.STICKER:
+            should_delete = True
+
+        if should_delete:
+            try:
+                await message.delete()
+            except:
+                pass
+            return  # Прерываем обработку, команды тоже не сработают
 
     # 2. ПОИСК ПРЕФИКСА (СТРОГАЯ ПРОВЕРКА)
     text_lower = text.lower()

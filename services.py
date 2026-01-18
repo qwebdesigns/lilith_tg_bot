@@ -212,14 +212,21 @@ def save_json(filename, data):
 # --- МУТЫ ---
 
 
-def add_mute(chat_id, user_id, duration_seconds):
+def add_mute(chat_id, user_id, duration_seconds, mute_type="all"):
+    """
+    Добавляет пользователя в мут с указанным типом.
+    mute_type: "all", "photo", "video", "animation", "sticker", "media"
+    """
     db = load_json(MUTE_FILE)
     cid, uid = str(chat_id), str(user_id)
 
     if cid not in db:
         db[cid] = {}
 
-    db[cid][uid] = int(time.time()) + duration_seconds
+    end_time = int(time.time()) + duration_seconds
+
+    # Теперь храним объект, а не просто число
+    db[cid][uid] = {"time": end_time, "type": mute_type}
     save_json(MUTE_FILE, db)
 
 
@@ -235,18 +242,32 @@ def remove_mute(chat_id, user_id):
 
 
 def check_mute(chat_id, user_id):
-    """Возвращает True, если пользователь в муте (и надо удалить сообщение)"""
+    """
+    Проверяет мут. Возвращает ТИП мута (str) или None, если мута нет.
+    """
     db = load_json(MUTE_FILE)
     cid, uid = str(chat_id), str(user_id)
 
     if cid in db and uid in db[cid]:
-        end_time = db[cid][uid]
+        data = db[cid][uid]
+
+        # Поддержка старого формата (если в базе просто число)
+        if isinstance(data, int):
+            end_time = data
+            mute_type = "all"
+        else:
+            end_time = data.get("time", 0)
+            mute_type = data.get("type", "all")
+
+        # Если время вышло
         if int(time.time()) > end_time:
             del db[cid][uid]
             save_json(MUTE_FILE, db)
-            return False
-        return True
-    return False
+            return None  # Мута нет
+
+        return mute_type  # Возвращаем тип: 'all', 'photo' и т.д.
+
+    return None
 
 
 # --- БАНЫ ---

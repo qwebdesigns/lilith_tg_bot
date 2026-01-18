@@ -38,6 +38,8 @@ async def process_weapon(message_or_callback, weapon_name, mode, bot):
 
     resp = await search_weapon(weapon_name, mode)
 
+    #remove html <br>
+    resp = resp.replace("<br>", "\n")
     # 1. Если API вернуло "1" — значит есть картинка
     if resp == "1":
         img_data = await download_image()
