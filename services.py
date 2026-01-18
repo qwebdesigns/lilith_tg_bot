@@ -214,7 +214,7 @@ def save_json(filename, data):
 
 def add_mute(chat_id, user_id, duration_seconds, mute_type="all"):
     """
-    Добавляет пользователя в мут с указанным типом.
+    Добавляет мут.
     mute_type: "all", "photo", "video", "animation", "sticker", "media"
     """
     db = load_json(MUTE_FILE)
@@ -225,7 +225,7 @@ def add_mute(chat_id, user_id, duration_seconds, mute_type="all"):
 
     end_time = int(time.time()) + duration_seconds
 
-    # Теперь храним объект, а не просто число
+    # Сохраняем словарь: время и тип
     db[cid][uid] = {"time": end_time, "type": mute_type}
     save_json(MUTE_FILE, db)
 
@@ -243,7 +243,7 @@ def remove_mute(chat_id, user_id):
 
 def check_mute(chat_id, user_id):
     """
-    Проверяет мут. Возвращает ТИП мута (str) или None, если мута нет.
+    Возвращает ТИП мута (str) или None, если мута нет.
     """
     db = load_json(MUTE_FILE)
     cid, uid = str(chat_id), str(user_id)
@@ -251,7 +251,7 @@ def check_mute(chat_id, user_id):
     if cid in db and uid in db[cid]:
         data = db[cid][uid]
 
-        # Поддержка старого формата (если в базе просто число)
+        # Поддержка старого формата (если в базе число)
         if isinstance(data, int):
             end_time = data
             mute_type = "all"
@@ -263,13 +263,14 @@ def check_mute(chat_id, user_id):
         if int(time.time()) > end_time:
             del db[cid][uid]
             save_json(MUTE_FILE, db)
-            return None  # Мута нет
+            return None
 
-        return mute_type  # Возвращаем тип: 'all', 'photo' и т.д.
+        return mute_type  # Возвращаем строку ("all", "photo"...)
 
     return None
 
 
+# ... (остальные функции api_save_user и т.д.) ...
 # --- БАНЫ ---
 
 
@@ -351,3 +352,26 @@ async def api_add_tg_list(username):
                 return await resp.json()
         except:
             return None
+
+
+# В САМЫЙ КОНЕЦ services.py ДОБАВЬТЕ ЭТО (чтобы не было ошибки import):
+import asyncio
+
+CHAT_USERS_FILE = "chat_users.json"
+chat_users_lock = asyncio.Lock()
+
+
+async def update_local_user(user_id, username, full_name):
+    user_id = str(user_id)
+    async with chat_users_lock:
+        if os.path.exists(CHAT_USERS_FILE):
+            try:
+                with open(CHAT_USERS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except:
+                data = {}
+        else:
+            data = {}
+        data[user_id] = {"username": username, "name": full_name}
+        with open(CHAT_USERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)

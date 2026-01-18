@@ -1,4 +1,3 @@
-# commands/mute.py
 import re
 import time
 from services import add_mute, remove_mute
@@ -9,6 +8,7 @@ PERMISSIONS = {"мут": "mute_users", "размут": "mute_users"}
 
 
 def parse_time(args):
+    """Превращает '5м', '1ч' в секунды"""
     if not args:
         return 30 * 60
     match = re.search(r"(\d+)\s*(с|м|ч|д|s|m|h|d)?", args.lower())
@@ -29,28 +29,30 @@ def parse_time(args):
 
 async def run(message, args, bot):
     chat_id = message.chat.id
-    text = message.text.lower()  # Весь текст: "л мут фото 1ч"
+    text = message.text.lower()
 
     # --- РАЗМУТ ---
     if "размут" in text or "unmute" in text:
         target_id = None
         if message.reply_to_message:
             target_id = message.reply_to_message.from_user.id
+        elif args and args.isdigit():
+            target_id = int(args)
 
         if target_id and remove_mute(chat_id, target_id):
-            await message.answer(
-                f"✅ {message.reply_to_message.from_user.full_name} снова может говорить."
-            )
+            await message.answer(f"✅ Пользователь размучен.")
         else:
-            await message.answer(
-                "Пользователь не был в муте или вы не ответили на сообщение."
-            )
+            await message.answer("Пользователь не был в муте.")
         return
 
     # --- МУТ ---
     if not message.reply_to_message:
         await message.answer(
-            "🤫 Ответьте на сообщение. Пример: <code>мут фото 1ч</code>",
+            "🤫 Ответьте на сообщение.\n"
+            "Примеры:\n"
+            "<code>мут 1ч</code> (полный)\n"
+            "<code>мут фото 30м</code>\n"
+            "<code>мут медиа 1ч</code> (все кроме текста)",
             parse_mode="HTML",
         )
         return
@@ -61,9 +63,7 @@ async def run(message, args, bot):
     # 1. ОПРЕДЕЛЯЕМ ТИП МУТА
     mute_type = "all"
     type_text = "полный мут"
-
-    # Убираем ключевые слова из аргументов, чтобы не сломать парсинг времени
-    clean_args = args
+    clean_args = args  # Копия аргументов для парсинга времени
 
     if "фото" in text:
         mute_type = "photo"
@@ -77,19 +77,19 @@ async def run(message, args, bot):
         mute_type = "animation"
         type_text = "мут GIF"
         clean_args = clean_args.replace("гиф", "")
-    elif "стикер" in text:  # стикеры, стикер
+    elif "стикер" in text:
         mute_type = "sticker"
         type_text = "мут стикеров"
         clean_args = re.sub(r"стикер[а-я]*", "", clean_args)
     elif "медиа" in text:
         mute_type = "media"
-        type_text = "мут медиа (фото/видео/гиф/стикеры)"
+        type_text = "мут медиа (текст разрешен)"
         clean_args = clean_args.replace("медиа", "")
 
     # 2. Парсим время
     seconds = parse_time(clean_args)
 
-    # 3. Сохраняем
+    # 3. Сохраняем в базу
     add_mute(chat_id, target_id, seconds, mute_type)
 
     readable = f"{seconds} сек."

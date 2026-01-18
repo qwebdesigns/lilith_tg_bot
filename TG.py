@@ -9,7 +9,7 @@ from aiogram.filters import CommandStart
 
 from config import BOT_TOKEN, PREFIXES
 from services import check_mute, check_is_banned, check_permissions, update_local_user
-from aiogram.types import ContentType  # Не забудьте добавить в импорты вверху!
+from aiogram.types import Message, ContentType
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -163,27 +163,39 @@ async def on_user_join(message: Message):
 
 
 # --- ГЛАВНЫЙ ОБРАБОТЧИК СООБЩЕНИЙ ---
+# --- ГЛАВНЫЙ ОБРАБОТЧИК СООБЩЕНИЙ ---
 @dp.message()
 async def handle_message(message: Message):
-    if not message.text:
-        return
+    # 1. СОХРАНЯЕМ АКТИВНОГО (если нужно)
+    if message.from_user:
+        try:
+            # Если update_local_user нет в импортах, добавьте его вверху файла:
+            # from services import update_local_user
+            await update_local_user(
+                message.from_user.id,
+                message.from_user.username,
+                message.from_user.full_name,
+            )
+        except:
+            pass
 
+    # 2. ПРОВЕРКА НА МУТ
     chat_id = message.chat.id
     user_id = message.from_user.id
-    text = message.text.strip()
 
+    # Теперь check_mute возвращает тип мута ('all', 'photo'...)
     mute_type = check_mute(chat_id, user_id)
 
     if mute_type:
         should_delete = False
-        msg_type = message.content_type  # photo, video, text, sticker...
+        msg_type = message.content_type  # photo, text, sticker...
 
-        # Логика проверки типов
+        # Логика типов
         if mute_type == "all":
             should_delete = True
 
         elif mute_type == "media":
-            # Медиа мут: фото, видео, кружочки, гифки, стикеры, документы, аудио
+            # Удаляем всё, кроме текста
             if msg_type in [
                 ContentType.PHOTO,
                 ContentType.VIDEO,
@@ -216,7 +228,10 @@ async def handle_message(message: Message):
                 await message.delete()
             except:
                 pass
-            return  # Прерываем обработку, команды тоже не сработают
+            return  # Прерываем, команды от замученного тоже не работают
+
+    if not message.text:
+        return
 
     # 2. ПОИСК ПРЕФИКСА (СТРОГАЯ ПРОВЕРКА)
     text_lower = text.lower()
