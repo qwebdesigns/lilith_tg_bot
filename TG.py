@@ -230,10 +230,11 @@ async def handle_message(message: Message):
                 pass
             return  # Прерываем, команды от замученного тоже не работают
 
-    if not message.text:
-        return
+        if not message.text:
+            return
 
     # 2. ПОИСК ПРЕФИКСА (СТРОГАЯ ПРОВЕРКА)
+    text = message.text
     text_lower = text.lower()
     used_prefix = None
 
