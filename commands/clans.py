@@ -13,12 +13,18 @@ async def run(message, args, bot):
     cmd = message.text.lower()
 
     resp = ""
-    if "клан вк" in cmd:
-        resp = await get_text("clan.php")
+    if "клан вк плей" in cmd:
+        resp = await get_text("clan_vk_play.php")
     elif "клан стим" in cmd:
         resp = await get_text("clan_steam.php")
     elif "клан херо" in cmd:
         resp = await get_text("clan_steam_t1.php")
+    elif "клан окру" in cmd:
+        resp = await get_text("clan_okru.php")
+    elif "клан вк" in cmd:
+        resp = await get_text("clan.php")
+    elif "клан майл" in cmd:
+        resp = await get_text("clan_mail.php")
     else:
         # Просто "клан"
         resp = await get_text("clan_all.php")
